@@ -45,9 +45,9 @@ dev = [
 sf-behaviour = "sf_behaviour.cli:main"
 
 [project.urls]
-"Source Code" = "https://github.com/viswanathanstartup/sf-behaviour"
-"Bug Tracker" = "https://github.com/viswanathanstartup/sf-behaviour/issues"
-Documentation = "https://github.com/viswanathanstartup/sf-behaviour/tree/main/docs"
+"Source Code" = "https://github.com/veerarag1973/sf-behaviour"
+"Bug Tracker" = "https://github.com/veerarag1973/sf-behaviour/issues"
+Documentation = "https://github.com/veerarag1973/sf-behaviour/tree/main/docs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sf_behaviour"]

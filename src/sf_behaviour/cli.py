@@ -223,7 +223,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
 
 _STARTER_YAML = """\
 # sf-behaviour test suite
-# Docs: https://github.com/viswanathanstartup/sf-behaviour#readme
+# Docs: https://github.com/veerarag1973/sf-behaviour#readme
 
 version: "1.0"
 

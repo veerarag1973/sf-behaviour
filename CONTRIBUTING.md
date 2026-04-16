@@ -3,7 +3,7 @@
 ## Development setup
 
 ```bash
-git clone https://github.com/viswanathanstartup/sf-behaviour
+git clone https://github.com/veerarag1973/sf-behaviour
 cd sf-behaviour
 pip install -e ".[dev]"
 pre-commit install

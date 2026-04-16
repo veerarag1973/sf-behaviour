@@ -99,5 +99,5 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[1.0.1]: https://github.com/viswanathanstartup/sf-behaviour/releases/tag/v1.0.1
-[1.0.0]: https://github.com/viswanathanstartup/sf-behaviour/releases/tag/v1.0.0
+[1.0.1]: https://github.com/veerarag1973/sf-behaviour/releases/tag/v1.0.1
+[1.0.0]: https://github.com/veerarag1973/sf-behaviour/releases/tag/v1.0.0
