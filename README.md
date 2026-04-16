@@ -4,7 +4,7 @@
 Write YAML test cases → run them → score outputs → fail CI on regression.
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
-[![spanforge 2.0.2](https://img.shields.io/badge/spanforge-2.0.2-blueviolet.svg)](https://pypi.org/project/spanforge/)
+[![spanforge 2.0.3](https://img.shields.io/badge/spanforge-2.0.3-blueviolet.svg)](https://pypi.org/project/spanforge/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
@@ -40,7 +40,7 @@ See [docs/scorers.md](docs/scorers.md) for details.
 pip install sf-behaviour
 ```
 
-Requires Python 3.9+ and [spanforge](https://pypi.org/project/spanforge/) 2.0.2 (installed automatically).
+Requires Python 3.9+ and [spanforge](https://pypi.org/project/spanforge/) 2.0.3 (installed automatically).
 
 ---
 

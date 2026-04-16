@@ -59,8 +59,8 @@ EvalRunner.run(suite)
 
 ## Design principles
 
-- **Zero surprise dependencies** — HTTP calls use Python's stdlib `urllib.request`; only `spanforge` and `PyYAML` are runtime deps.
+- **Zero surprise dependencies** — HTTP calls use `spanforge.http.chat_completion()`; only `spanforge` and `PyYAML` are runtime deps.
 - **Scorer composability** — each scorer is independent; a single test case can have multiple scorers. Six built-in plus plugin discovery via entry points.
-- **Baseline-gated CI** — results are serialised to JSONL (via spanforge's exporter) so any future run can be compared against any past run.
+- **Baseline-gated CI** — results are serialised to JSONL (via `spanforge.io.write_jsonl`) so any future run can be compared against any past run.
 - **Extensible** — `EvalScorer` is an ABC; drop in a custom scorer with two lines of code. Distribute via entry points.
 - **Parallel & resilient** — run cases concurrently with `--jobs`, retry transient errors with `--retry`, filter with `--tag`.

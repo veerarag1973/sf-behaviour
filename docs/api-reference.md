@@ -195,7 +195,7 @@ Orchestrates HTTP calls and scorer evaluation.
 Iterates every `(case, scorer_config)` pair in `suite`:
 
 1. Skips cases where `skip=True` or where tags don't match the `tags` filter
-2. Calls the endpoint via `urllib.request` (stdlib — no extra dependencies)
+2. Calls the endpoint via `spanforge.http.chat_completion()` (with built-in retry and backoff)
 3. On transient errors, retries up to `max_retries` times with exponential backoff
 4. Passes the raw response text to the scorer
 5. Appends an `EvalResult` with token usage extracted from the API response
@@ -262,9 +262,8 @@ def save_results(results: list[EvalResult], path: str) -> None
 
 Write `results` to a JSONL file.
 
-- Uses `spanforge.exporters.jsonl.SyncJSONLExporter`; each result is wrapped in a `spanforge.event.Event` with `event_type = "llm.eval.scenario.completed"`.
+- Uses `spanforge.io.write_jsonl(records, path)` to write results as JSON lines.
 - Creates parent directories automatically.
-- Falls back to plain JSON-lines if spanforge is unavailable.
 
 ---
 
@@ -276,8 +275,7 @@ def load_results(path: str) -> list[EvalResult]
 
 Read a JSONL file previously written by `save_results`.
 
-- Uses `spanforge.stream.EventStream.from_file()`.
-- Falls back to plain JSON-line reading if spanforge is unavailable.
+- Uses `spanforge.io.read_jsonl(path)` to read JSON lines.
 - Returns `[]` for an empty file.
 
 ---

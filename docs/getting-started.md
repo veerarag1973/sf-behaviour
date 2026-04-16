@@ -17,13 +17,13 @@ This guide takes you from zero to a passing behaviour test suite in about five m
 pip install sf-behaviour
 ```
 
-This also installs `spanforge==2.0.2` (used for PII detection and JSONL I/O) and `PyYAML>=6.0`.
+This also installs `spanforge>=2.0.3` (used for HTTP calls, PII detection, JSONL I/O, env-var interpolation, JSON Schema validation, plugin discovery, and percentile stats) and `PyYAML>=6.0`.
 
 Verify the installation:
 
 ```bash
 sf-behaviour --version
-# sf-behaviour 1.0.0
+# sf-behaviour 1.0.1
 ```
 
 ---

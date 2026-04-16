@@ -15,9 +15,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Replaced local env-var interpolation** engine (`_ENV_VAR_RE`, `_interpolate_env`, `_interpolate_data`) in `yaml_parser.py` with `spanforge.config.interpolate_env()`
 - **Replaced local JSON Schema validator** (`_validate()` in `json_schema.py`) with `spanforge.schema.validate()`
 - **Replaced local plugin discovery** (`importlib.metadata` cross-version shim) in `EvalRunner._discover_plugins()` with `spanforge.plugins.discover()`
-- **Replaced local `EvalScorer` ABC** with `spanforge.eval.Scorer` (re-exported as `EvalScorer`)
-- **Replaced local ANSI color utility** (`_color()` in `cli.py`) with `spanforge.cli.color()`
-- **Replaced inline percentile calculation** in `report.py` with `spanforge.stats.percentiles()`
+- **Replaced local `EvalScorer` ABC** with `spanforge.eval.BehaviourScorer` (re-exported as `EvalScorer`)
+- **Retained local ANSI color utility** (`_color()` in `cli.py`) — `spanforge.cli` does not exist
+- **Replaced inline percentile calculation** in `report.py` with `spanforge.stats.percentile()`
 - **Replaced JSONL persistence** (3-layer `SyncJSONLExporter`/`EventStream`/plain-JSON fallback) in `dataset.py` with `spanforge.io.write_jsonl()` / `read_jsonl()`
 - **Simplified PII scanner** in `pii_leakage.py` — removed fallback regex patterns, uses `spanforge.redact.scan_payload()` directly
 
@@ -27,9 +27,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Local `_ENV_VAR_RE` regex and interpolation functions (now in spanforge)
 - Local JSON Schema `_validate()` implementation (now in spanforge)
 - Local `importlib.metadata` cross-version `entry_points()` shim (now in spanforge)
-- Local `EvalScorer(ABC)` abstract base class definition (now in spanforge)
+- Local `EvalScorer(ABC)` abstract base class definition (now `BehaviourScorer` in spanforge)
 - Fallback PII regex patterns in `pii_leakage.py` (spanforge 2.0.3 is stable)
 - `SyncJSONLExporter` / `EventStream` imports and 3-layer fallback in `dataset.py`
+- Local ANSI `_color()` helper retained — `spanforge.cli` module does not exist
 
 ---
 
