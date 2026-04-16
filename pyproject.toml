@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sf-behaviour"
+version = "1.0.0"
+description = "Behaviour test runner for OpenAI-compatible endpoints — built on spanforge"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [
+    { name = "Viswanathanstartup" },
+]
+keywords = ["llm", "evaluation", "behaviour-testing", "openai", "spanforge", "ci"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "spanforge==2.0.2",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.9",
+]
+
+[project.scripts]
+sf-behaviour = "sf_behaviour.cli:main"
+
+[project.urls]
+"Source Code" = "https://github.com/viswanathanstartup/sf-behaviour"
+"Bug Tracker" = "https://github.com/viswanathanstartup/sf-behaviour/issues"
+Documentation = "https://github.com/viswanathanstartup/sf-behaviour/tree/main/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sf_behaviour"]
+artifacts = ["src/sf_behaviour/py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -q"
+
+[tool.coverage.run]
+source = ["sf_behaviour"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 90
+
+[tool.mypy]
+strict = true
+python_version = "3.9"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "S",   # flake8-bandit (security)
+    "BLE", # flake8-blind-except
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff-specific rules
+]
+ignore = [
+    "S101",  # allow assert in tests
+    "S603",  # subprocess call (not used here, but avoids false positives)
+    "UP007", # allow X | Y union syntax backport via __future__
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S106", "BLE001"]
