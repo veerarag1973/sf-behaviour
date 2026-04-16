@@ -26,12 +26,11 @@ normalises this to 0.0–1.0.
 
 from __future__ import annotations
 
-import json
 import os
 import re
-import urllib.error
-import urllib.request
 from typing import TYPE_CHECKING, Any
+
+from spanforge.http import chat_completion
 
 from ..eval import EvalScorer
 
@@ -91,27 +90,20 @@ class LLMJudgeScorer(EvalScorer):
             "Reply with ONLY a numeric score from 0 to 10."
         )
 
-        url = judge_endpoint.rstrip("/") + "/chat/completions"
-        payload = {
-            "model": judge_model,
-            "messages": [{"role": "user", "content": judge_prompt}],
-            "temperature": 0.0,
-        }
-
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {judge_api_key}",
-            },
-            method="POST",
-        )
+        messages = [{"role": "user", "content": judge_prompt}]
 
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                body = json.loads(resp.read().decode())
-            judge_text: str = body["choices"][0]["message"]["content"]
+            resp = chat_completion(
+                endpoint=judge_endpoint,
+                model=judge_model,
+                messages=messages,
+                api_key=judge_api_key,
+                timeout=30,
+                max_retries=0,
+            )
+            if resp.error:
+                return 0.0, f"judge call failed: {resp.error}"
+            judge_text = resp.text
         except Exception as exc:  # noqa: BLE001
             return 0.0, f"judge call failed: {exc}"
 

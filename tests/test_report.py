@@ -91,7 +91,7 @@ class TestBuildReport:
     def test_latency_percentiles(self):
         results = [_make_result(latency_ms=float(i)) for i in range(1, 101)]
         report = build_report(results)
-        assert report.p50_latency_ms == 51.0  # median of 1-100
+        assert 50.0 <= report.p50_latency_ms <= 51.0  # median of 1-100
         assert report.p95_latency_ms >= 95.0
 
 

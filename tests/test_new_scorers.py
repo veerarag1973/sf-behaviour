@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +11,7 @@ from sf_behaviour.scorers.exact_match import ExactMatchScorer
 from sf_behaviour.scorers.llm_judge import LLMJudgeScorer, _extract_score
 from sf_behaviour.scorers.json_schema import JSONSchemaScorer, _validate
 from sf_behaviour.yaml_parser import Message, ScorerConfig, TestCase
+from spanforge.http import ChatCompletionResponse
 
 
 # ---------------------------------------------------------------------------
@@ -143,13 +143,11 @@ class TestLLMJudgeScorer:
             )],
             endpoint="http://model.test/v1",
         )
-        body = json.dumps({"choices": [{"message": {"content": "8/10"}}]}).encode()
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = body
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        def _judge_response(**kwargs):
+            return ChatCompletionResponse(text="8/10", latency_ms=42.0)
+
+        with patch("sf_behaviour.scorers.llm_judge.chat_completion", side_effect=_judge_response):
             score, reason = scorer.score(case, "helpful response")
         assert score == 0.8
         assert "judge score" in reason
@@ -167,7 +165,11 @@ class TestLLMJudgeScorer:
             )],
             endpoint="http://model.test/v1",
         )
-        with patch("urllib.request.urlopen", side_effect=Exception("connection refused")):
+
+        def _fail(**kwargs):
+            return ChatCompletionResponse(text="", latency_ms=0.0, error="connection refused")
+
+        with patch("sf_behaviour.scorers.llm_judge.chat_completion", side_effect=_fail):
             score, reason = scorer.score(case, "response")
         assert score == 0.0
         assert "judge call failed" in reason

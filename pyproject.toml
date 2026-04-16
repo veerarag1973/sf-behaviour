@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sf-behaviour"
-version = "1.0.0"
+version = "1.0.1"
 description = "Behaviour test runner for OpenAI-compatible endpoints — built on spanforge"
 readme = "README.md"
 license = { text = "MIT" }
@@ -29,7 +29,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "spanforge==2.0.2",
+    "spanforge==2.0.3",
     "PyYAML>=6.0",
 ]
 

@@ -6,6 +6,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.1] — 2026-04-16
+
+### Changed
+
+- **Upgraded spanforge dependency** from 2.0.2 to 2.0.3
+- **Replaced local HTTP client** (`urllib.request` with retry/backoff) in `EvalRunner._call_endpoint()` and `LLMJudgeScorer` with `spanforge.http.chat_completion()`
+- **Replaced local env-var interpolation** engine (`_ENV_VAR_RE`, `_interpolate_env`, `_interpolate_data`) in `yaml_parser.py` with `spanforge.config.interpolate_env()`
+- **Replaced local JSON Schema validator** (`_validate()` in `json_schema.py`) with `spanforge.schema.validate()`
+- **Replaced local plugin discovery** (`importlib.metadata` cross-version shim) in `EvalRunner._discover_plugins()` with `spanforge.plugins.discover()`
+- **Replaced local `EvalScorer` ABC** with `spanforge.eval.Scorer` (re-exported as `EvalScorer`)
+- **Replaced local ANSI color utility** (`_color()` in `cli.py`) with `spanforge.cli.color()`
+- **Replaced inline percentile calculation** in `report.py` with `spanforge.stats.percentiles()`
+- **Replaced JSONL persistence** (3-layer `SyncJSONLExporter`/`EventStream`/plain-JSON fallback) in `dataset.py` with `spanforge.io.write_jsonl()` / `read_jsonl()`
+- **Simplified PII scanner** in `pii_leakage.py` — removed fallback regex patterns, uses `spanforge.redact.scan_payload()` directly
+
+### Removed
+
+- Local `urllib.request`-based HTTP client with retry logic (now in spanforge)
+- Local `_ENV_VAR_RE` regex and interpolation functions (now in spanforge)
+- Local JSON Schema `_validate()` implementation (now in spanforge)
+- Local `importlib.metadata` cross-version `entry_points()` shim (now in spanforge)
+- Local `EvalScorer(ABC)` abstract base class definition (now in spanforge)
+- Fallback PII regex patterns in `pii_leakage.py` (spanforge 2.0.3 is stable)
+- `SyncJSONLExporter` / `EventStream` imports and 3-layer fallback in `dataset.py`
+
+---
+
 ## [1.0.0] — 2026-04-16
 
 ### Added
@@ -65,11 +92,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 #### Package
 - `src`-layout Python package; distribution name `sf-behaviour`; import name `sf_behaviour`
 - Hatchling build backend
-- Dependencies: `spanforge==2.0.2`, `PyYAML>=6.0`
-- Zero additional runtime dependencies — HTTP calls use stdlib `urllib.request`
+- Dependencies: `spanforge==2.0.3`, `PyYAML>=6.0`
 - Dev extras: `pytest`, `pytest-cov`, `ruff`, `mypy`
 - 177 tests; 92 % line coverage
 
 ---
 
+[1.0.1]: https://github.com/viswanathanstartup/sf-behaviour/releases/tag/v1.0.1
 [1.0.0]: https://github.com/viswanathanstartup/sf-behaviour/releases/tag/v1.0.0

@@ -17,61 +17,18 @@ EvalRunner
 
 from __future__ import annotations
 
-import json
 import os
-import sys
-import time
-import urllib.error
-import urllib.request
-from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-if sys.version_info >= (3, 10):
-    from importlib.metadata import entry_points
-else:
-    from importlib.metadata import entry_points  # type: ignore[attr-defined]
+from spanforge.eval import BehaviourScorer as EvalScorer
+from spanforge.http import chat_completion
+from spanforge.plugins import discover as _discover_entry_points
 
 if TYPE_CHECKING:
     from .yaml_parser import TestCase, TestSuite
-
-
-# ---------------------------------------------------------------------------
-# EvalScorer — abstract base
-# ---------------------------------------------------------------------------
-
-class EvalScorer(ABC):
-    """Abstract base class for all behaviour scorers.
-
-    Subclasses must:
-    - set a unique class-level ``name`` string
-    - implement ``score(case, response) -> (float, str)``
-
-    The returned float must be in the range [0.0, 1.0].  The string is a
-    human-readable reason that is stored in :class:`EvalResult`.
-    """
-
-    name: str = "base"
-
-    @abstractmethod
-    def score(self, case: "TestCase", response: str) -> tuple[float, str]:
-        """Score the model response for the given test case.
-
-        Parameters
-        ----------
-        case:
-            The :class:`~sf_behaviour.yaml_parser.TestCase` being evaluated.
-        response:
-            The raw text returned by the model.
-
-        Returns
-        -------
-        tuple[float, str]
-            ``(score, reason)`` where *score* is in [0.0, 1.0] and *reason* is
-            a short explanation suitable for CI log output.
-        """
 
 
 # ---------------------------------------------------------------------------
@@ -255,12 +212,7 @@ class EvalRunner:
     def _discover_plugins(self) -> None:
         """Auto-discover scorers registered via ``sf_behaviour.scorers`` entry points."""
         try:
-            eps = entry_points()
-            if isinstance(eps, dict):
-                scorer_eps = eps.get("sf_behaviour.scorers", [])
-            else:
-                scorer_eps = eps.select(group="sf_behaviour.scorers")  # Python 3.12+
-            for ep in scorer_eps:
+            for ep in _discover_entry_points("sf_behaviour.scorers"):
                 if ep.name not in self._scorers:
                     scorer = ep.load()
                     if isinstance(scorer, type) and issubclass(scorer, EvalScorer):
@@ -429,56 +381,17 @@ class EvalRunner:
         tuple[str, float, str | None, dict[str, int]]
             (response_text, latency_ms, error_message_or_None, usage_dict)
         """
-        url = endpoint.rstrip("/") + "/chat/completions"
-        payload: dict[str, Any] = {"model": model, "messages": messages}
-        data = json.dumps(payload).encode("utf-8")
-        empty_usage: dict[str, int] = {}
-
-        last_error = ""
-        for attempt in range(1 + self._max_retries):
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self._api_key}",
-                },
-                method="POST",
-            )
-
-            t0 = time.perf_counter()
-            try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    body: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
-                latency_ms = (time.perf_counter() - t0) * 1000.0
-            except urllib.error.HTTPError as exc:
-                latency_ms = (time.perf_counter() - t0) * 1000.0
-                try:
-                    detail = exc.read(8192).decode("utf-8")
-                except Exception:
-                    detail = str(exc)
-                last_error = f"HTTP {exc.code}: {detail[:200]}"
-                # Retry on 429 or 5xx
-                if exc.code in (429, 500, 502, 503, 504) and attempt < self._max_retries:
-                    time.sleep(min(2 ** attempt, 8))
-                    continue
-                return "", latency_ms, last_error, empty_usage
-            except (OSError, urllib.error.URLError) as exc:  # transient network errors
-                latency_ms = (time.perf_counter() - t0) * 1000.0
-                last_error = str(exc)
-                if attempt < self._max_retries:
-                    time.sleep(min(2 ** attempt, 8))
-                    continue
-                return "", latency_ms, last_error, empty_usage
-
-            usage = body.get("usage") or {}
-
-            try:
-                text: str = body["choices"][0]["message"]["content"]
-            except (KeyError, IndexError, TypeError) as exc:
-                return "", latency_ms, f"unexpected response shape: {exc}", empty_usage
-
-            return text, latency_ms, None, usage
-
-        # Should not reach here, but just in case
-        return "", 0.0, last_error, empty_usage  # pragma: no cover
+        resp = chat_completion(
+            endpoint=endpoint,
+            model=model,
+            messages=messages,
+            api_key=self._api_key,
+            timeout=timeout,
+            max_retries=self._max_retries,
+        )
+        usage = {
+            "prompt_tokens": resp.prompt_tokens,
+            "completion_tokens": resp.completion_tokens,
+            "total_tokens": resp.total_tokens,
+        }
+        return resp.text, resp.latency_ms, resp.error, usage

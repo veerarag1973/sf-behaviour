@@ -7,6 +7,8 @@ import statistics
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from spanforge.stats import percentile as _sf_percentile
+
 if TYPE_CHECKING:
     from .eval import EvalResult
 
@@ -59,11 +61,9 @@ def build_report(results: list["EvalResult"]) -> SuiteReport:
 
     latencies = [r.latency_ms for r in results]
     report.mean_latency_ms = statistics.mean(latencies)
-    sorted_lat = sorted(latencies)
-    n = len(sorted_lat)
-    report.p50_latency_ms = sorted_lat[n // 2]
-    report.p95_latency_ms = sorted_lat[min(int(n * 0.95), n - 1)]
-    report.p99_latency_ms = sorted_lat[min(int(n * 0.99), n - 1)]
+    report.p50_latency_ms = _sf_percentile(latencies, 50)
+    report.p95_latency_ms = _sf_percentile(latencies, 95)
+    report.p99_latency_ms = _sf_percentile(latencies, 99)
 
     report.total_prompt_tokens = sum(r.prompt_tokens for r in results)
     report.total_completion_tokens = sum(r.completion_tokens for r in results)

@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import time
-import urllib.error
-from io import BytesIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from sf_behaviour.eval import EvalResult, EvalRunner, EvalScorer
 from sf_behaviour.yaml_parser import Message, ScorerConfig, TestCase, TestSuite
+from spanforge.http import ChatCompletionResponse
 
 
 # ---------------------------------------------------------------------------
@@ -45,25 +42,25 @@ def _make_case(
     )
 
 
-def _mock_openai_response(
+def _mock_chat_completion(
     content: str = "I'm sorry",
     prompt_tokens: int = 10,
     completion_tokens: int = 5,
     total_tokens: int = 15,
-) -> MagicMock:
-    body = json.dumps({
-        "choices": [{"message": {"content": content}}],
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-        },
-    }).encode("utf-8")
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = body
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    return mock_resp
+    error: str | None = None,
+):
+    """Return a side_effect callable mimicking spanforge.http.chat_completion."""
+    def _side_effect(**kwargs):
+        if error:
+            return ChatCompletionResponse(text="", latency_ms=0.0, error=error)
+        return ChatCompletionResponse(
+            text=content,
+            latency_ms=42.0,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+    return _side_effect
 
 
 # ===========================================================================
@@ -77,7 +74,7 @@ class TestTagFiltering:
             _make_case("tc-privacy", tags=["privacy"]),
         )
         runner = EvalRunner(api_key="test", tags=["safety"])
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response()):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion()):
             results = runner.run(suite)
         assert len(results) == 1
         assert results[0].case_id == "tc-safety"
@@ -88,7 +85,7 @@ class TestTagFiltering:
             _make_case("tc-2", tags=["b"]),
         )
         runner = EvalRunner(api_key="test")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response()):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion()):
             results = runner.run(suite)
         assert len(results) == 2
 
@@ -99,7 +96,7 @@ class TestTagFiltering:
             _make_case("tc-3", tags=["c"]),
         )
         runner = EvalRunner(api_key="test", tags=["a", "b"])
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response()):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion()):
             results = runner.run(suite)
         assert len(results) == 2
         ids = {r.case_id for r in results}
@@ -117,7 +114,7 @@ class TestSkip:
             _make_case("tc-skip", skip=True),
         )
         runner = EvalRunner(api_key="test")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response()):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion()):
             results = runner.run(suite)
         assert len(results) == 1
         assert results[0].case_id == "tc-run"
@@ -131,7 +128,7 @@ class TestTokenTracking:
     def test_tokens_in_result(self):
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="test")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response(
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion(
             prompt_tokens=42, completion_tokens=18, total_tokens=60,
         )):
             results = runner.run(suite)
@@ -142,15 +139,13 @@ class TestTokenTracking:
 
     def test_no_usage_in_response(self):
         """When the API doesn't return usage, tokens default to 0."""
-        body = json.dumps({"choices": [{"message": {"content": "I'm sorry"}}]}).encode()
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = body
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="test")
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+
+        def _no_usage(**kwargs):
+            return ChatCompletionResponse(text="I'm sorry", latency_ms=42.0)
+
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_no_usage):
             results = runner.run(suite)
         r = results[0]
         assert r.prompt_tokens == 0
@@ -168,14 +163,13 @@ class TestParallelExecution:
             _make_case("tc-2"),
             _make_case("tc-3"),
         )
-        mock = _mock_openai_response()
 
         runner_seq = EvalRunner(api_key="test", jobs=1)
-        with patch("urllib.request.urlopen", return_value=mock):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion()):
             seq_results = runner_seq.run(suite)
 
         runner_par = EvalRunner(api_key="test", jobs=2)
-        with patch("urllib.request.urlopen", return_value=mock):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion()):
             par_results = runner_par.run(suite)
 
         assert len(seq_results) == len(par_results) == 3
@@ -187,7 +181,7 @@ class TestParallelExecution:
             _make_case("tc-2", tags=["b"]),
         )
         runner = EvalRunner(api_key="test", tags=["a"], jobs=2)
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response()):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion()):
             results = runner.run(suite)
         assert len(results) == 1
 
@@ -198,55 +192,47 @@ class TestParallelExecution:
 
 class TestRetry:
     def test_retry_on_500(self):
+        """Retry logic is now inside spanforge.http.chat_completion.
+        We verify that max_retries is passed through and a successful result is returned."""
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="test", max_retries=2)
 
-        call_count = 0
+        def _success(**kwargs):
+            assert kwargs.get("max_retries") == 2
+            return ChatCompletionResponse(
+                text="I'm sorry, but I can't help with that request.",
+                latency_ms=42.0,
+            )
 
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise urllib.error.HTTPError(
-                    url="http://x", code=500, msg="Server Error",
-                    hdrs=MagicMock(), fp=BytesIO(b"Internal Server Error"),
-                )
-            return _mock_openai_response("I'm sorry, but I can't help with that request.")
-
-        with patch("urllib.request.urlopen", side_effect=side_effect):
-            with patch("time.sleep"):  # don't actually sleep
-                results = runner.run(suite)
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_success):
+            results = runner.run(suite)
 
         assert len(results) == 1
-        assert call_count == 2
-        assert results[0].error is None  # success on retry
+        assert results[0].error is None
 
     def test_retry_exhausted(self):
+        """When retries are exhausted, spanforge returns an error string."""
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="test", max_retries=1)
 
-        err_500 = urllib.error.HTTPError(
-            url="http://x", code=500, msg="Server Error",
-            hdrs=MagicMock(), fp=BytesIO(b"Error"),
-        )
+        def _fail(**kwargs):
+            return ChatCompletionResponse(text="", latency_ms=0.0, error="HTTP 500: Server Error")
 
-        with patch("urllib.request.urlopen", side_effect=[err_500, err_500]):
-            with patch("time.sleep"):
-                results = runner.run(suite)
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_fail):
+            results = runner.run(suite)
 
         assert results[0].error is not None
         assert "500" in results[0].error
 
     def test_no_retry_on_401(self):
+        """Non-retryable errors are returned immediately by spanforge."""
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="test", max_retries=2)
 
-        err_401 = urllib.error.HTTPError(
-            url="http://x", code=401, msg="Unauthorized",
-            hdrs=MagicMock(), fp=BytesIO(b"Unauthorized"),
-        )
+        def _fail(**kwargs):
+            return ChatCompletionResponse(text="", latency_ms=0.0, error="HTTP 401: Unauthorized")
 
-        with patch("urllib.request.urlopen", side_effect=err_401):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_fail):
             results = runner.run(suite)
 
         assert results[0].error is not None

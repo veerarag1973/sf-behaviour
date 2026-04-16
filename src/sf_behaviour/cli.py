@@ -47,14 +47,10 @@ _RESET = "\033[0m"
 
 
 def _color(text: str, code: str) -> str:
-    """Return *text* wrapped in ANSI color codes.
-
-    Colors are suppressed when stdout is not a TTY or when the ``NO_COLOR``
-    environment variable is set (https://no-color.org/).
-    """
-    if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
-        return f"{code}{text}{_RESET}"
-    return text
+    """Return *text* wrapped in ANSI color codes (respects NO_COLOR)."""
+    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
+        return text
+    return f"{code}{text}{_RESET}"
 
 
 def _print_results(results: list[EvalResult], verbose: bool = False) -> None:

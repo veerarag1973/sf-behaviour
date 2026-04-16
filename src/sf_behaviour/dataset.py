@@ -1,8 +1,8 @@
 """Dataset persistence — save/load EvalResult objects as JSONL.
 
-Uses spanforge's ``SyncJSONLExporter`` and ``EventStream.from_file()`` to
-store results as ``llm.eval.scenario.completed`` events, keeping the data
-inside the spanforge event envelope for auditability.
+Uses spanforge's ``spanforge.io`` module to store results as
+``llm.eval.scenario.completed`` events, keeping the data inside the
+spanforge event envelope for auditability.
 
 Public API
 ----------
@@ -15,34 +15,21 @@ load_results(path)
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 from typing import Any
+
+from spanforge.io import read_jsonl, write_jsonl
 
 from .eval import EvalResult
 
 # Spanforge event type used for every eval record.
 _EVENT_TYPE = "llm.eval.scenario.completed"
-_SOURCE = "sf-behaviour@1.0.0"
+_SOURCE = "sf-behaviour@1.0.1"
 
 
 # ---------------------------------------------------------------------------
-# Spanforge integration helpers
+# Helpers
 # ---------------------------------------------------------------------------
-
-def _make_event(result: EvalResult) -> Any:
-    """Wrap *result* in a spanforge Event."""
-    try:
-        from spanforge.event import Event
-
-        return Event(
-            event_type=_EVENT_TYPE,
-            source=_SOURCE,
-            payload=_result_to_dict(result),
-        )
-    except Exception:  # noqa: BLE001 — spanforge unavailable, fall back to plain dict
-        return None
-
 
 def _result_to_dict(result: EvalResult) -> dict[str, Any]:
     return dataclasses.asdict(result)
@@ -73,43 +60,8 @@ def save_results(results: list[EvalResult], path: str) -> None:
         Destination file path.  Parent directories are created automatically.
     """
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        from spanforge.exporters.jsonl import SyncJSONLExporter
-
-        exporter = SyncJSONLExporter(path)
-        fallback_results: list[EvalResult] = []
-        try:
-            for result in results:
-                event = _make_event(result)
-                if event is not None:
-                    exporter.export(event)
-                else:
-                    fallback_results.append(result)
-        finally:
-            exporter.close()
-
-        # Write any results whose events couldn't be created *after* exporter
-        # has released the file handle.
-        if fallback_results:
-            with open(path, "a", encoding="utf-8") as fh:
-                for result in fallback_results:
-                    fh.write(
-                        json.dumps(
-                            {"event_type": _EVENT_TYPE, "payload": _result_to_dict(result)}
-                        )
-                        + "\n"
-                    )
-
-    except ImportError:  # pragma: no cover — spanforge not installed
-        with open(path, "w", encoding="utf-8") as fh:
-            for result in results:
-                fh.write(
-                    json.dumps(
-                        {"event_type": _EVENT_TYPE, "payload": _result_to_dict(result)}
-                    )
-                    + "\n"
-                )
+    records = [_result_to_dict(r) for r in results]
+    write_jsonl(records, path)
 
 
 def load_results(path: str) -> list[EvalResult]:
@@ -127,36 +79,11 @@ def load_results(path: str) -> list[EvalResult]:
     -------
     list[EvalResult]
     """
+    payloads = read_jsonl(path)
     results: list[EvalResult] = []
-
-    try:
-        from spanforge.stream import EventStream
-
+    for payload in payloads:
         try:
-            for event in EventStream.from_file(path):
-                if getattr(event, "event_type", None) == _EVENT_TYPE:
-                    try:
-                        results.append(_dict_to_result(dict(event.payload)))
-                    except Exception:  # noqa: BLE001
-                        pass  # skip malformed payload
-            return results
-        except Exception:  # noqa: BLE001 — spanforge failed to parse file; fall through
-            results.clear()
-
-    except ImportError:
-        pass  # spanforge not installed — fall back to plain JSON
-
-    # Plain-JSON fallback
-    with open(path, "r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                if obj.get("event_type") == _EVENT_TYPE:
-                    results.append(_dict_to_result(obj["payload"]))
-            except Exception:  # noqa: BLE001
-                pass  # skip malformed lines
-
+            results.append(_dict_to_result(payload))
+        except Exception:  # noqa: BLE001
+            pass  # skip malformed payloads
     return results

@@ -1,8 +1,8 @@
 """JSONSchemaScorer — validates the model response against a JSON schema.
 
 Scores 1.0 when the response is valid JSON that conforms to the schema,
-0.0 otherwise.  Uses a lightweight built-in validator (no external
-dependencies beyond the standard library).
+0.0 otherwise.  Uses ``spanforge.schema.validate`` for lightweight
+JSON Schema validation.
 
 Configuration via ``params`` on the scorer config:
 
@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from spanforge.schema import validate as _sf_validate
+
 from ..eval import EvalScorer
 
 if TYPE_CHECKING:
@@ -33,38 +35,8 @@ if TYPE_CHECKING:
 
 
 def _validate(instance: Any, schema: dict[str, Any], path: str = "$") -> list[str]:
-    """Minimal JSON Schema validator (type, required, properties, items, enum)."""
-    errors: list[str] = []
-    stype = schema.get("type")
-    if stype:
-        type_map = {
-            "string": str, "number": (int, float), "integer": int,
-            "boolean": bool, "array": list, "object": dict, "null": type(None),
-        }
-        expected = type_map.get(stype)
-        if expected and not isinstance(instance, expected):
-            errors.append(f"{path}: expected type {stype}, got {type(instance).__name__}")
-            return errors
-
-    if "enum" in schema and instance not in schema["enum"]:
-        errors.append(f"{path}: value {instance!r} not in enum {schema['enum']}")
-
-    if stype == "object" and isinstance(instance, dict):
-        for key in schema.get("required", []):
-            if key not in instance:
-                errors.append(f"{path}: missing required property '{key}'")
-        props = schema.get("properties", {})
-        for key, sub_schema in props.items():
-            if key in instance:
-                errors.extend(_validate(instance[key], sub_schema, f"{path}.{key}"))
-
-    if stype == "array" and isinstance(instance, list):
-        items_schema = schema.get("items")
-        if items_schema:
-            for i, item in enumerate(instance):
-                errors.extend(_validate(item, items_schema, f"{path}[{i}]"))
-
-    return errors
+    """Validate *instance* against *schema* using spanforge."""
+    return _sf_validate(instance, schema, path=path)
 
 
 class JSONSchemaScorer(EvalScorer):

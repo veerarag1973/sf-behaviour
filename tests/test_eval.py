@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sf_behaviour.eval import EvalResult, EvalRunner, RegressionDetector, RegressionReport, EvalScorer
 from sf_behaviour.yaml_parser import Message, ScorerConfig, TestCase, TestSuite
+from spanforge.http import ChatCompletionResponse
 
 
 # ---------------------------------------------------------------------------
@@ -41,15 +40,20 @@ def _make_case(
     )
 
 
-def _mock_openai_response(content: str) -> MagicMock:
-    body = json.dumps({
-        "choices": [{"message": {"content": content}}]
-    }).encode("utf-8")
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = body
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    return mock_resp
+def _mock_chat_completion(content: str, error: str | None = None, usage: dict | None = None):
+    """Return a side_effect callable that mimics spanforge.http.chat_completion."""
+    def _side_effect(**kwargs):
+        if error:
+            return ChatCompletionResponse(text="", latency_ms=0.0, error=error)
+        u = usage or {}
+        return ChatCompletionResponse(
+            text=content,
+            latency_ms=42.0,
+            prompt_tokens=u.get("prompt_tokens", 0),
+            completion_tokens=u.get("completion_tokens", 0),
+            total_tokens=u.get("total_tokens", 0),
+        )
+    return _side_effect
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +65,7 @@ class TestEvalRunner:
         suite = _make_suite(_make_case("tc-01", "refusal", threshold=0.5))
         runner = EvalRunner(api_key="test-key")
         refusal_text = "I'm sorry, I cannot help with that."
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response(refusal_text)):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion(refusal_text)):
             results = runner.run(suite)
         assert len(results) == 1
         r = results[0]
@@ -74,7 +78,7 @@ class TestEvalRunner:
     def test_run_single_case_refusal_fail(self):
         suite = _make_suite(_make_case("tc-01", "refusal", threshold=0.5))
         runner = EvalRunner(api_key="test-key")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("Sure, here you go!")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("Sure, here you go!")):
             results = runner.run(suite)
         r = results[0]
         assert r.score == 0.0
@@ -84,20 +88,16 @@ class TestEvalRunner:
         case = _make_case("tc-02", "faithfulness", threshold=0.6, context="Sky is blue.")
         suite = _make_suite(case)
         runner = EvalRunner(api_key="test-key")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("The sky is blue.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("The sky is blue.")):
             results = runner.run(suite)
         r = results[0]
         assert r.scorer_name == "faithfulness"
         assert r.score == 1.0
 
     def test_http_error_recorded(self):
-        import urllib.error
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="test-key")
-        http_err = urllib.error.HTTPError(
-            url="http://x", code=401, msg="Unauthorized", hdrs=MagicMock(), fp=BytesIO(b"Unauthorized")
-        )
-        with patch("urllib.request.urlopen", side_effect=http_err):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("", error="HTTP 401: Unauthorized")):
             results = runner.run(suite)
         r = results[0]
         assert r.passed is False
@@ -113,7 +113,7 @@ class TestEvalRunner:
         )
         suite = _make_suite(case)
         runner = EvalRunner(api_key="test-key")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("ok")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("ok")):
             results = runner.run(suite)
         r = results[0]
         assert r.passed is False
@@ -125,21 +125,21 @@ class TestEvalRunner:
             api_key="key",
             endpoint_override="https://custom.example.com/v1",
         )
-        captured_urls: list[str] = []
+        captured_endpoints: list[str] = []
 
-        def fake_urlopen(req, timeout=None):
-            captured_urls.append(req.full_url)
-            return _mock_openai_response("I can't help with that.")
+        def fake_chat_completion(**kwargs):
+            captured_endpoints.append(kwargs.get("endpoint", ""))
+            return ChatCompletionResponse(text="I can't help with that.", latency_ms=42.0)
 
-        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=fake_chat_completion):
             runner.run(suite)
 
-        assert captured_urls[0].startswith("https://custom.example.com/v1")
+        assert captured_endpoints[0] == "https://custom.example.com/v1"
 
     def test_model_override_in_result(self):
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="key", model_override="gpt-3.5-turbo")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't.")):
             results = runner.run(suite)
         assert results[0].model == "gpt-3.5-turbo"
 
@@ -155,7 +155,7 @@ class TestEvalRunner:
         )
         suite = _make_suite(case)
         runner = EvalRunner(api_key="key")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't assist.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't assist.")):
             results = runner.run(suite)
         assert len(results) == 2
         scorer_names = {r.scorer_name for r in results}
@@ -164,14 +164,14 @@ class TestEvalRunner:
     def test_latency_recorded(self):
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="key")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("sorry")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("sorry")):
             results = runner.run(suite)
         assert results[0].latency_ms >= 0.0
 
     def test_timestamp_iso8601(self):
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="key")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("nope")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("nope")):
             results = runner.run(suite)
         ts = results[0].timestamp
         assert "T" in ts and "+" in ts or "Z" in ts or ts.endswith("+00:00")
@@ -185,7 +185,7 @@ class TestEvalRunner:
                 raise RuntimeError("boom")
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="key", scorers={"refusal": BrokenScorer()})
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("ok")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("ok")):
             results = runner.run(suite)
         r = results[0]
         assert r.passed is False
@@ -195,19 +195,15 @@ class TestEvalRunner:
         """EvalRunner without explicit scorers uses BUILT_IN_SCORERS."""
         suite = _make_suite(_make_case("tc-01", "refusal"))
         runner = EvalRunner(api_key="key")
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't.")):
             results = runner.run(suite)
         assert len(results) == 1
 
     def test_unexpected_response_shape_recorded(self):
-        """If the API returns an unexpected JSON shape, error is recorded."""
+        """If the API returns an unexpected shape, error is recorded."""
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="key")
-        bad_resp = MagicMock()
-        bad_resp.read.return_value = json.dumps({"unexpected": "no choices key"}).encode()
-        bad_resp.__enter__ = lambda s: s
-        bad_resp.__exit__ = MagicMock(return_value=False)
-        with patch("urllib.request.urlopen", return_value=bad_resp):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("", error="unexpected response shape")):
             results = runner.run(suite)
         r = results[0]
         assert r.passed is False
@@ -217,7 +213,7 @@ class TestEvalRunner:
         """Generic network error should be recorded, not raised."""
         suite = _make_suite(_make_case())
         runner = EvalRunner(api_key="key")
-        with patch("urllib.request.urlopen", side_effect=ConnectionError("timeout")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("", error="timeout")):
             results = runner.run(suite)
         r = results[0]
         assert r.passed is False
@@ -297,7 +293,7 @@ class TestRegressionDetector:
         current = [_result("tc-01", "faithfulness", 0.75)]
         report = RegressionDetector(score_drop_threshold=0.1).compare(baseline, current)
         lines = report.summary_lines()
-        assert any("→" in line for line in lines)
+        assert any("\u2192" in line for line in lines)
 
 
 # ---------------------------------------------------------------------------
@@ -334,10 +330,10 @@ class TestEvalScorerABC:
                 return -0.5, "below zero"
 
         suite = _make_suite(_make_case())
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("ok")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("ok")):
             results = EvalRunner(api_key="key", scorers={"refusal": OverflowScorer()}).run(suite)
         assert results[0].score == 1.0
 
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("ok")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("ok")):
             results = EvalRunner(api_key="key", scorers={"refusal": UnderflowScorer()}).run(suite)
         assert results[0].score == 0.0

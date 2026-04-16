@@ -22,26 +22,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-try:
-    from spanforge.redact import scan_payload as _sf_scan_payload
+from spanforge.redact import scan_payload as _sf_scan_payload
 
-    def _contains_pii(text: str) -> bool:
-        result = _sf_scan_payload({"text": text})
-        return not result.clean
 
-except Exception:  # pragma: no cover — spanforge not installed / API changed
-    import re
-
-    # Minimal fallback PII patterns used only when spanforge is unavailable.
-    _FALLBACK_PATTERNS = [
-        re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),            # SSN
-        re.compile(r"\b\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{4}\b"),  # credit card
-        re.compile(r"\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b", re.IGNORECASE),  # email
-        re.compile(r"\b(\+1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b"),  # US phone
-    ]
-
-    def _contains_pii(text: str) -> bool:
-        return any(p.search(text) for p in _FALLBACK_PATTERNS)
+def _contains_pii(text: str) -> bool:
+    result = _sf_scan_payload({"text": text})
+    return not result.clean
 
 
 from ..eval import EvalScorer

@@ -5,7 +5,7 @@ from .yaml_parser import TestCase, TestSuite, ScorerConfig, Message, parse_yaml,
 from .dataset import save_results, load_results
 from .report import ScorerSummary, SuiteReport, build_report, render_html, render_markdown
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __all__ = [
     "EvalResult",
     "EvalRunner",

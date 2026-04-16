@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import csv
 import json
-import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-_ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]*))?\}")
+from spanforge.config import interpolate_env as _interpolate_env_str
 
 
 @dataclass
@@ -68,15 +66,7 @@ class TestSuite:
 
 def _interpolate_env(value: str) -> str:
     """Replace ``${VAR}`` or ``${VAR:default}`` with environment variables."""
-    def _replace(m: re.Match[str]) -> str:
-        var_name, default = m.group(1), m.group(2)
-        env_val = os.environ.get(var_name)
-        if env_val is not None:
-            return env_val
-        if default is not None:
-            return default
-        return m.group(0)  # leave unresolved if no default
-    return _ENV_VAR_RE.sub(_replace, value)
+    return _interpolate_env_str(value)
 
 
 def _interpolate_data(data: Any) -> Any:

@@ -6,13 +6,13 @@ import json
 import os
 import sys
 import textwrap
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sf_behaviour.cli import _build_parser, _cmd_run, _cmd_compare, _print_results
 from sf_behaviour.eval import EvalResult
+from spanforge.http import ChatCompletionResponse
 
 
 # ---------------------------------------------------------------------------
@@ -38,15 +38,11 @@ def _result(case_id: str = "tc-01", passed: bool = True, score: float = 1.0,
     )
 
 
-def _mock_openai_response(content: str) -> MagicMock:
-    body = json.dumps({
-        "choices": [{"message": {"content": content}}]
-    }).encode("utf-8")
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = body
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    return mock_resp
+def _mock_chat_completion(content: str):
+    """Return a side_effect callable mimicking spanforge.http.chat_completion."""
+    def _side_effect(**kwargs):
+        return ChatCompletionResponse(text=content, latency_ms=42.0)
+    return _side_effect
 
 
 def _yaml_file(tmp_path, content: str) -> str:
@@ -144,7 +140,7 @@ class TestCmdRun:
                   - refusal
         """)
         args = self._args(yaml)
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't help.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't help.")):
             code = _cmd_run(args)
         assert code == 0
 
@@ -160,7 +156,7 @@ class TestCmdRun:
                   - refusal
         """)
         args = self._args(yaml)
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("Sure, here you go!")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("Sure, here you go!")):
             code = _cmd_run(args)
         assert code == 1
 
@@ -184,7 +180,7 @@ class TestCmdRun:
         """)
         out_file = str(tmp_path / "results.jsonl")
         args = self._args(yaml, output=out_file)
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't.")):
             _cmd_run(args)
         assert os.path.exists(out_file)
 
@@ -204,7 +200,7 @@ class TestCmdRun:
         save_results([_result("tc-01", passed=True, score=1.0)], baseline_file)
         p = _build_parser()
         args = p.parse_args(["run", yaml, "--baseline", baseline_file])
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't.")):
             code = _cmd_run(args)
         assert code == 0
 
@@ -224,7 +220,7 @@ class TestCmdRun:
         save_results([_result("tc-01", passed=True, score=1.0)], baseline_file)
         p = _build_parser()
         args = p.parse_args(["run", yaml, "--baseline", baseline_file])
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("Sure!")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("Sure!")):
             code = _cmd_run(args)
         assert code == 1
 
@@ -241,7 +237,7 @@ class TestCmdRun:
         """)
         p = _build_parser()
         args = p.parse_args(["run", yaml, "--baseline", "nonexistent.jsonl"])
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't.")):
             code = _cmd_run(args)
         assert code == 1
         assert "Error loading baseline" in capsys.readouterr().err
@@ -259,7 +255,7 @@ class TestCmdRun:
         """)
         p = _build_parser()
         args = p.parse_args(["run", yaml, "--verbose"])
-        with patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't.")):
+        with patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't.")):
             _cmd_run(args)
         out = capsys.readouterr().out
         assert "reason" in out
@@ -331,7 +327,7 @@ class TestMain:
                   - refusal
         """)
         with patch("sys.argv", ["sf-behaviour", "run", yaml]), \
-             patch("urllib.request.urlopen", return_value=_mock_openai_response("I can't.")):
+             patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("I can't.")):
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 0
@@ -349,7 +345,7 @@ class TestMain:
                   - refusal
         """)
         with patch("sys.argv", ["sf-behaviour", "run", yaml]), \
-             patch("urllib.request.urlopen", return_value=_mock_openai_response("Sure!")):
+             patch("sf_behaviour.eval.chat_completion", side_effect=_mock_chat_completion("Sure!")):
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 1
